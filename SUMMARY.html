@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>2,000-Step LLM Speedrun — Summary</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #5a5a5a; --border: #e2e2e2;
+    --accent: #2563eb; --good: #15803d; --bad: #b91c1c; --card: #f7f8fa;
+    --code-bg: #f1f3f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1115; --fg:#e8e8e8; --muted:#9aa0a6; --border:#2a2d33;
+      --accent:#60a5fa; --good:#4ade80; --bad:#f87171; --card:#171a1f; --code-bg:#1c1f26; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.55; max-width: 920px; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+  }
+  h1 { font-size: 1.7rem; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.2rem; margin-top: 2.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+  h3 { font-size: 1rem; margin-top: 1.5rem; color: var(--accent); }
+  .subtitle { color: var(--muted); margin-top: 0; }
+  .metric-row { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1.25rem 0; }
+  .metric-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1rem 1.25rem; flex: 1; min-width: 160px;
+  }
+  .metric-card .label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .metric-card .value { font-size: 1.6rem; font-weight: 700; margin-top: 0.15rem; }
+  .metric-card .value.good { color: var(--good); }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; }
+  th, td { border: 1px solid var(--border); padding: 0.5rem 0.7rem; text-align: left; }
+  th { background: var(--card); }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code-bg);
+    padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.88em; }
+  .pass { color: var(--good); font-weight: 600; }
+  .fail { color: var(--bad); font-weight: 600; }
+  .tag { display:inline-block; font-size:0.72rem; padding:0.1rem 0.5rem; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
+  .table-wrap { overflow-x: auto; }
+  ul { padding-left: 1.3rem; }
+  li { margin-bottom: 0.35rem; }
+  .contrib-bar { display:flex; height: 22px; border-radius: 6px; overflow:hidden; border:1px solid var(--border); margin: 0.5rem 0 1rem; }
+  .contrib-ai { background: var(--accent); }
+  .contrib-human { background: var(--good); }
+  .contrib-legend { display:flex; gap:1.5rem; font-size:0.85rem; color:var(--muted); }
+  .legend-dot { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:0.4rem; vertical-align:middle; }
+  footer { margin-top: 3rem; color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+</style>
+</head>
+<body>
+
+<h1>2,000-Step LLM Speedrun — Engineering Summary</h1>
+<p class="subtitle">Plivo AI/ML Internship Assessment · byte-level GPT trained from scratch, CPU only, 2,000 optimizer steps, ≤2,000,000 parameters</p>
+
+<div class="metric-row">
+  <div class="metric-card"><div class="label">Baseline dev bpb</div><div class="value">2.3718</div></div>
+  <div class="metric-card"><div class="label">Final dev bpb</div><div class="value good">2.2799</div></div>
+  <div class="metric-card"><div class="label">Relative improvement</div><div class="value good">3.9%</div></div>
+  <div class="metric-card"><div class="label">Parameters used</div><div class="value">1,339,840 <span class="tag">/ 2,000,000 cap</span></div></div>
+</div>
+
+<h2>Objective</h2>
+<p>Improve a deliberately mediocre GPT-style byte-level language model as much as possible under
+hard caps: 2,000 optimizer steps, 2,000,000 parameters, pure PyTorch/NumPy/stdlib, CPU only, no
+pretrained weights, trained solely on the provided mixed English+Hindi corpus (~7.3MB,
+~14% Devanagari by character count). Scored via bits-per-byte (bpb) on held-out text using the
+official, unmodified <code>evaluate.py</code> sliding-window scorer.</p>
+
+<h2>Final Architecture &amp; Hyperparameters</h2>
+<div class="table-wrap">
+<table>
+<tr><th>Component</th><th>Value</th><th>Note</th></tr>
+<tr><td>Tokenizer</td><td class="mono">byte-level, vocab=256</td><td>unchanged from starter — see "Not attempted" below</td></tr>
+<tr><td>Architecture</td><td class="mono">4-layer, 4-head, GPT (pre-norm, causal SDPA attention)</td><td>unchanged from starter</td></tr>
+<tr><td>n_embd</td><td class="mono">160</td><td>tested 196 (Run 6) — did not help under fixed step budget</td></tr>
+<tr><td>block_size</td><td class="mono">128</td><td>unchanged</td></tr>
+<tr><td>Weight tying</td><td class="mono">False</td><td>tested True (Runs 2–3) — <strong>hurt</strong> results, rejected</td></tr>
+<tr><td>Optimizer</td><td class="mono">Adam (plain, no weight decay)</td><td>AdamW+decay tested (Run 2) — hurt, rejected</td></tr>
+<tr><td>Gradient clipping</td><td class="mono">none</td><td>tested max_norm=1.0 (Run 2) — unnecessary, no instability to protect against</td></tr>
+<tr><td>Learning rate</td><td class="mono">cosine decay, 1e-3 → 1e-4, no warmup</td><td>peak found via Runs 4–5; decay added in Run 7</td></tr>
+<tr><td>Batch size</td><td class="mono">8</td><td>unchanged</td></tr>
+<tr><td>Dropout</td><td class="mono">0.0</td><td>unchanged — no overfitting signal at this step count</td></tr>
+<tr><td>Init</td><td class="mono">normal(std=0.05), zero bias</td><td>unchanged (candidate for future work)</td></tr>
+<tr><td>Total parameters</td><td class="mono">1,339,840 / 2,000,000</td><td>67% of cap — capacity increase tested and rejected (Run 6)</td></tr>
+</table>
+</div>
+
+<h2>Experimental Log (full detail in RUNLOG.md)</h2>
+<div class="table-wrap">
+<table>
+<tr><th>Run</th><th>Change</th><th>Dev bpb</th><th>Result</th></tr>
+<tr><td>1</td><td>Baseline, unmodified</td><td>2.3718</td><td><span class="tag">reference</span></td></tr>
+<tr><td>2</td><td>Weight tying + AdamW(wd=0.01) + grad clip (bundle)</td><td>2.3962</td><td class="fail">FAILED</td></tr>
+<tr><td>3</td><td>Weight tying isolated</td><td>2.4094</td><td class="fail">FAILED (worst)</td></tr>
+<tr><td>4</td><td>Constant LR 3e-4 → 1e-3</td><td>2.2842</td><td class="pass">SUCCESS (largest single gain)</td></tr>
+<tr><td>5</td><td>Constant LR → 2e-3 (mapping the LR region)</td><td>2.4907</td><td class="fail">FAILED — decisive instability</td></tr>
+<tr><td>6</td><td>Widen model 160→196 (1.98M params) at lr=1e-3</td><td>2.2965</td><td class="fail">FAILED — no gain from capacity</td></tr>
+<tr><td>7</td><td>Cosine decay 1e-3→1e-4, no warmup</td><td><strong>2.2799</strong></td><td class="pass">SUCCESS — final</td></tr>
+<tr><td>8</td><td>GPT-2 style init (std=0.02 + residual scaling)</td><td>2.3302</td><td class="fail">FAILED — likely init/LR coupling, not re-tuned</td></tr>
+</table>
+</div>
+
+<h2>Key Findings</h2>
+<ul>
+<li><strong>The model was optimization-limited, not capacity- or regularization-limited.</strong>
+Learning rate alone (Run 4) produced a far larger gain (-0.0876 bpb) than anything else tested.
+Both weight tying (Runs 2–3) and a ~48% capacity increase (Run 6) made results <em>worse</em>,
+which is the clearest evidence that more parameters or more regularization were not the
+bottleneck at this step count — more/better-timed learning signal was.</li>
+<li><strong>Weight tying's usual benefit needs steps it doesn't have here.</strong> Forcing one
+matrix to serve both the input-embedding and output-classification roles is a well-established
+technique for longer training runs, but at 2000 steps it doesn't have time to settle into a good
+shared representation, and actively hurt convergence in isolation (Run 3 was the single worst
+result across all 7 runs).</li>
+<li><strong>Mapping the LR region before adding a scheduler paid off.</strong> Rather than
+reaching for warmup+cosine on convention, the LR was bracketed with plain constant-LR probes
+first (3e-4 too low, 1e-3 good, 2e-3 decisively unstable — a real ~700-step mid-run plateau, not
+noise). Only after that evidence existed was a schedule introduced, and it was decay-only — a
+mid-run analysis showed warmup wasn't justified here since the constant-1e-3 run was stable
+from step 1 with no early instability to protect against.</li>
+<li><strong>Hyperparameters are coupled, not independent (Run 8).</strong> A GPT-2-style tighter
+init (std=0.02 + residual-branch scaling) is a well-established technique, but tested against
+our already-tuned LR schedule it made results worse — most likely because init scale and
+learning rate jointly determine effective step size, and the LR schedule had been tuned
+specifically for the original std=0.05 init. This was correctly rejected as "this init doesn't
+work with this LR," not "this init is bad," given no time remained for a joint re-tune.</li>
+<li><strong>Not attempted: a BPE tokenizer.</strong> The byte-level tokenizer triples the
+token cost of Devanagari text (each Devanagari character is 3 UTF-8 bytes), affecting ~14% of
+train and ~21% of the held-out eval text — likely the single highest-ceiling remaining lever.
+It was deliberately not attempted given the hard, disqualifying round-trip-correctness
+requirement (`decode(encode(text)) == text`) under real time pressure near the submission
+deadline — a risk/reward call made explicitly, not an oversight.</li>
+</ul>
+
+<h2>Human vs. AI Contribution</h2>
+<p>This was a human-directed, AI-executed process with an unusual extra step: a second AI
+(consulted by the human as an independent reviewer) was used throughout to critique the plan,
+and its suggestions were evaluated critically rather than adopted automatically — several were
+accepted, several were pushed back on with specific technical counter-arguments.</p>
+<div class="contrib-bar">
+  <div class="contrib-ai" style="width:55%"></div>
+  <div class="contrib-human" style="width:45%"></div>
+</div>
+<div class="contrib-legend">
+  <span><span class="legend-dot contrib-ai"></span>AI (Claude): code changes, running experiments, parameter/timing derivations, RUNLOG documentation</span>
+  <span><span class="legend-dot contrib-human"></span>Human: strategy, experiment sequencing, critical review, go/no-go calls, time management</span>
+</div>
+<ul>
+<li><strong>Human decisions that changed the outcome:</strong> insisting on single-variable
+isolation instead of trusting a first bundled "hygiene" run at face value; explicitly rejecting
+premature jumps to a scheduler before the LR region was empirically mapped; catching an
+imprecise claim ("warmup can't hurt because it starts near zero") and forcing a mechanism-level
+correction; setting the BPE go/no-go decision explicitly rather than letting it default; and
+hard time-boxing the whole process against a real, non-negotiable submission deadline.</li>
+<li><strong>AI contributions:</strong> repository/assignment analysis, all code edits (model.py,
+train.py), running and monitoring all 7 training + evaluation runs, deriving exact parameter-count
+formulas and verifying them against the real model rather than estimating, diagnosing *why* each
+failed run failed (not just that it failed), and maintaining RUNLOG.md/NOTES.md/this document
+throughout rather than after the fact.</li>
+<li><strong>Second-AI suggestions accepted:</strong> map the constant-LR region before
+introducing a scheduler; prioritize capacity over a scheduler once LR was resolved; keep RUNLOG
+conclusions appropriately hedged rather than over-certain.</li>
+<li><strong>Second-AI suggestions pushed back on or revised:</strong> an unverifiable claim
+about cosine schedules "losing" in an unrelated prior context was treated as anecdote, not
+evidence; "spend the unused parameter budget" was treated as a hypothesis to test rather than a
+free win (it was tested — Run 6 — and failed); and the original warmup justification was
+revised once the timing of Run 5's plateau (mid-run, not at initialization) showed warmup
+wasn't the right mechanism.</li>
+</ul>
+
+<footer>
+Full run-by-run reasoning: <code>RUNLOG.md</code>. Condensed final configuration and rationale: <code>NOTES.md</code>.
+Reproduce: <code>python train.py --data ../data/train_corpus.txt --steps 2000 --lr 1e-3 --out ckpt.pt</code>
+then <code>python evaluate.py --checkpoint ckpt.pt --text_file ../data/dev_eval.txt</code>.
+</footer>
+
+</body>
+</html>
