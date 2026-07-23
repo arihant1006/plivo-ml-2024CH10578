@@ -11,7 +11,9 @@ import torch.nn.functional as F
 
 class Config:
     vocab_size = 256      # byte-level tokenizer default
-    block_size = 128
+    block_size = 128  # Run 12 tested 192 - essentially identical bpb (2.1732
+    # vs 2.1731) but ~2x slower; reverted since 128 tokens (~330 real bytes
+    # via BPE) was already sufficient context at this scale.
     n_layer = 4
     n_head = 4
     n_embd = 160  # Run 6 (n_embd=196) gave no gain under fixed 2000-step budget; reverted
@@ -38,6 +40,20 @@ class SelfAttention(nn.Module):
         return self.drop(self.proj(y))
 
 
+class RMSNorm(nn.Module):
+    # Run 11: replaces LayerNorm - no mean-centering, no bias, just scale by
+    # root-mean-square. Standard in LLaMA/Mistral/Gemma; pairs naturally with
+    # the SwiGLU MLP already adopted (same architectural family).
+    def __init__(self, dim, eps=1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def forward(self, x):
+        norm = x.pow(2).mean(-1, keepdim=True).add(self.eps).rsqrt()
+        return x * norm * self.weight
+
+
 class SwiGLU(nn.Module):
     # Run 9: gated MLP (SwiGLU/silu-gated), hidden dim scaled by 2/3 vs the
     # standard 4x GELU MLP so the extra (three vs two) weight matrices land
@@ -57,9 +73,9 @@ class SwiGLU(nn.Module):
 class Block(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        self.ln1 = nn.LayerNorm(cfg.n_embd)
+        self.ln1 = RMSNorm(cfg.n_embd)
         self.attn = SelfAttention(cfg)
-        self.ln2 = nn.LayerNorm(cfg.n_embd)
+        self.ln2 = RMSNorm(cfg.n_embd)
         self.mlp = SwiGLU(cfg)
 
     def forward(self, x):
@@ -76,7 +92,7 @@ class GPT(nn.Module):
         self.pos_emb = nn.Embedding(cfg.block_size, cfg.n_embd)
         self.drop = nn.Dropout(cfg.dropout)
         self.blocks = nn.ModuleList(Block(cfg) for _ in range(cfg.n_layer))
-        self.ln_f = nn.LayerNorm(cfg.n_embd)
+        self.ln_f = RMSNorm(cfg.n_embd)
         self.head = nn.Linear(cfg.n_embd, cfg.vocab_size, bias=False)
         if cfg.tie_weights:
             self.head.weight = self.tok_emb.weight

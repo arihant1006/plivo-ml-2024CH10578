@@ -1,11 +1,11 @@
 # NOTES
 
 Best configuration: hand-rolled BPE tokenizer (500 merges, vocab 756, trained only on
-`train_corpus.txt`), 4-layer/4-head/160-dim GPT with a SwiGLU (gated silu) MLP instead of
-GELU, untied embeddings, plain Adam with cosine LR decay from 1e-3 to 1e-4 over all 2000 steps
-(no warmup), no weight decay, no gradient clipping, batch=8, block_size=128. Total params:
-1,499,408 / 2,000,000. Final dev bpb: **2.1738**, down from the baseline's 2.3718 — an 8.35%
-relative improvement.
+`train_corpus.txt`), 4-layer/4-head/160-dim GPT with a SwiGLU (gated silu) MLP and RMSNorm
+instead of GELU MLP + LayerNorm, untied embeddings, plain Adam with cosine LR decay from 1e-3
+to 1e-4 over all 2000 steps (no warmup), no weight decay, no gradient clipping, batch=8,
+block_size=128. Total params: 1,497,968 / 2,000,000. Final dev bpb: **2.1731**, down from the
+baseline's 2.3718 — an 8.4% relative improvement.
 
 The two largest levers, in order, were: (1) the BPE tokenizer, which compresses the corpus's
 ~14-20% Devanagari content from 3 bytes/char under the byte tokenizer down to 2.6-3.7

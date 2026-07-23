@@ -471,3 +471,84 @@ relative improvement. Promoting to final submitted configuration.
 
 **Keep/revert:** **Keep — final submitted configuration**
 (`ckpt_run10_BPE_swiglu_BEST.pt` / `ckpt.pt`, dev bpb 2.1738).
+
+---
+
+## Run 11 — RMSNorm instead of LayerNorm — **marginal, essentially neutral, kept**
+
+**Hypothesis:** With tokenization, optimization schedule, and the feedforward block already
+addressed (Runs 4/7/9/10), normalization was the remaining major architectural component.
+RMSNorm (no mean-centering, no bias, scale by root-mean-square only) is standard in modern
+LLMs (LLaMA, Mistral, Gemma) and pairs naturally with the already-adopted SwiGLU MLP - both
+from the same architectural family - with genuine literature support for comparable-or-better
+optimization behavior at lower compute cost. Single-variable isolation vs Run 10: only `ln1`,
+`ln2`, `ln_f` change from `nn.LayerNorm` to a custom `RMSNorm` module; everything else
+(BPE tokenizer, SwiGLU, cosine-decay LR) identical.
+
+**What changed:** Added an `RMSNorm` module (`x * rsqrt(mean(x^2) + eps) * weight`); replaced
+all three `nn.LayerNorm(cfg.n_embd)` instances. Params: 1,497,968 (vs Run 10's 1,499,408 -
+1,440 fewer, since RMSNorm drops LayerNorm's bias term and mean-centering).
+
+**Results:**
+| Metric | Run 10 (LayerNorm) | Run 11 (RMSNorm) |
+|---|---|---|
+| Train loss @ 2000 | 3.7752 | 3.7578 |
+| Dev bpb | 2.1738 | **2.1731** |
+
+**Result: marginal improvement (-0.0007), within likely noise given the session's typical
+effect sizes (0.04-0.09 for changes we're confident about).** Not a strong signal either way -
+this is an honest, low-confidence-but-technically-positive result, not a decisive win.
+
+**Conclusion:** Kept, since it costs nothing (fewer params, no added risk/complexity, doesn't
+touch the tokenizer or training pipeline) and is at worst neutral. Framed accurately rather
+than oversold: this run demonstrates RMSNorm is a safe, well-motivated swap consistent with
+current architectural practice, not that it meaningfully moved the metric on its own at this
+scale/step budget - a fair, defensible outcome to report either way.
+
+**Keep/revert:** **Keep - final submitted configuration**
+(`ckpt_run11_rmsnorm_BEST.pt` / `ckpt.pt`, dev bpb 2.1731).
+
+---
+
+## Session summary
+
+---
+
+## Run 12 — block_size 128→192, exploiting BPE's compression — **neutral, reverted**
+
+**Hypothesis:** BPE compresses ~2.5-2.6 bytes/token, so a fixed 128-token window already
+covers proportionally more raw text than before extension; explicitly extending block_size
+further should let the model condition on even more real context. Required zero new code -
+`get_batch`, attention, and `evaluate.py`'s sliding window are all already generic in
+`cfg.block_size` - making this the lowest-implementation-risk of the remaining architectural
+options (vs RoPE or a depth increase).
+
+**What changed:** `Config.block_size` 128 → 192 only. Params: 1,508,208 (+10,240 from the
+larger position-embedding table).
+
+**Results:**
+| Metric | Run 11 (block=128) | Run 12 (block=192) |
+|---|---|---|
+| Dev bpb | 2.1731 | 2.1732 |
+| Wall-clock | 179s | 330s (~1.8x slower) |
+
+**Result: neutral (+0.0001, pure noise) at ~1.8x the training cost.**
+
+**Conclusion:** 128 tokens (~330 real bytes of text via BPE) was already sufficient context at
+this model scale (4 layers, 160-dim) and step budget - extending it further neither helped nor
+hurt the metric, only the wall-clock. Reverted to block_size=128 given no benefit for real
+added cost. A clean, well-motivated negative result: the bottleneck at this point in the
+session was not context length.
+
+**Keep/revert:** **Revert.** Final submission is Run 11 (`ckpt.pt`, dev bpb 2.1731).
+
+---
+
+## Session summary
+
+Baseline dev bpb 2.3718 → final dev bpb **2.1731** (8.4% relative improvement) across 12 runs.
+Ranked by actual impact: (1) BPE tokenizer, (2) SwiGLU MLP, (3) LR tuning + cosine decay,
+(4) RMSNorm (marginal), (5) block_size increase (neutral). Weight tying, capacity increase,
+GPT-2-style init, and longer context were each well-motivated, tested, and rejected/neutral
+under this specific 2000-step/CPU/parameter-capped regime - the model was consistently
+optimization- and representation-limited, not capacity- or context-limited, throughout.

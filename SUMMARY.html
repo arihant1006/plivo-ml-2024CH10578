@@ -58,9 +58,9 @@
 
 <div class="metric-row">
   <div class="metric-card"><div class="label">Baseline dev bpb</div><div class="value">2.3718</div></div>
-  <div class="metric-card"><div class="label">Final dev bpb</div><div class="value good">2.1738</div></div>
-  <div class="metric-card"><div class="label">Relative improvement</div><div class="value good">8.35%</div></div>
-  <div class="metric-card"><div class="label">Parameters used</div><div class="value">1,499,408 <span class="tag">/ 2,000,000 cap</span></div></div>
+  <div class="metric-card"><div class="label">Final dev bpb</div><div class="value good">2.1731</div></div>
+  <div class="metric-card"><div class="label">Relative improvement</div><div class="value good">8.4%</div></div>
+  <div class="metric-card"><div class="label">Parameters used</div><div class="value">1,497,968 <span class="tag">/ 2,000,000 cap</span></div></div>
 </div>
 
 <h2>Objective</h2>
@@ -103,7 +103,9 @@ official, unmodified <code>evaluate.py</code> sliding-window scorer.</p>
 <tr><td>7</td><td>Cosine decay 1e-3→1e-4, no warmup</td><td><strong>2.2799</strong></td><td class="pass">SUCCESS — final</td></tr>
 <tr><td>8</td><td>GPT-2 style init (std=0.02 + residual scaling)</td><td>2.3302</td><td class="fail">FAILED — likely init/LR coupling, not re-tuned</td></tr>
 <tr><td>9</td><td>SwiGLU MLP instead of GELU MLP (matched params)</td><td>2.2262</td><td class="pass">SUCCESS — 2nd largest gain</td></tr>
-<tr><td>10</td><td>Hand-rolled BPE tokenizer (500 merges, vocab 756)</td><td><strong>2.1738</strong></td><td class="pass">SUCCESS — largest single gain, final</td></tr>
+<tr><td>10</td><td>Hand-rolled BPE tokenizer (500 merges, vocab 756)</td><td>2.1738</td><td class="pass">SUCCESS — largest single gain</td></tr>
+<tr><td>11</td><td>RMSNorm instead of LayerNorm</td><td><strong>2.1731</strong></td><td class="pass">marginal (+), kept, final</td></tr>
+<tr><td>12</td><td>block_size 128→192 (exploit BPE compression)</td><td>2.1732</td><td class="tag">neutral, reverted (~1.8x slower for no gain)</td></tr>
 </table>
 </div>
 
