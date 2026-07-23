@@ -295,7 +295,7 @@ current best after 6 runs.
 
 ---
 
-## Run 7 — Cosine decay from 1e-3 → 1e-4, no warmup — **SUCCESS, new best (final)**
+## Run 7 — Cosine decay from 1e-3 → 1e-4, no warmup — **SUCCESS, new best**
 
 **Hypothesis:** Run 4 (constant 1e-3) was stable from step 1 with no early instability, so
 warmup is not well-motivated here — but its loss curve showed a small uptick right at the end
@@ -329,16 +329,18 @@ proxy; dev bpb via the official sliding-window scorer is the real signal. The hy
 gain (-0.0043 bpb) is modest, within the range where run-to-run variance could also
 contribute, though the direction matches the hypothesis.
 
-**Conclusion:** Adopting this as the final configuration given real time constraints
-(deadline approaching). Summary of the full experimental arc: constant-LR tuning (Run 4) was
-by far the largest lever found (-0.0876 bpb from baseline); weight tying (Runs 2-3) and raw
-capacity increase (Run 6) both failed under this fixed step budget, indicating the model was
-optimization-limited, not capacity-limited or over-parameterized; cosine decay (Run 7) added a
-further small gain on top of the LR finding. Final dev bpb: **2.2799**, down from baseline's
-2.3718 (a 3.9% relative improvement).
+**Conclusion:** Adopting this as the best configuration given real time constraints at this
+point (deadline approaching). Summary of the experimental arc so far: constant-LR tuning
+(Run 4) was by far the largest lever found (-0.0876 bpb from baseline); weight tying (Runs 2-3)
+and raw capacity increase (Run 6) both failed under this fixed step budget, indicating the
+model was optimization-limited, not capacity-limited or over-parameterized; cosine decay
+(Run 7) added a further small gain on top of the LR finding. Dev bpb at this point: **2.2799**,
+down from baseline's 2.3718 (a 3.9% relative improvement). *(Additional time later became
+available, leading to Runs 9-13 and a further improvement to 2.1731 — see Session summary.)*
 
-**Keep/revert:** **Keep — this is the final submitted configuration**
-(`ckpt_run7_cosine_decay_BEST.pt` / `ckpt.pt`, dev bpb 2.2799).
+**Keep/revert:** **Keep — best configuration at this point in the session**
+(`ckpt_run7_cosine_decay_BEST.pt` / `ckpt.pt`, dev bpb 2.2799). *(Later superseded by Run 9's
+SwiGLU swap — see Session summary for the true final configuration.)*
 
 ---
 
@@ -376,9 +378,9 @@ would need to be co-tuned with LR to get a real read, which we didn't have budge
 
 **Conclusion:** Reverted to Run 7's original init (std=0.05, no residual scaling). Given time
 constraints at this point in the assessment, not pursuing a joint init+LR re-tuning sweep.
-Run 7 remains the final submitted configuration.
+Run 7 remains the current best configuration at this point in the session.
 
-**Keep/revert:** **Revert.** Final submission remains Run 7 (`ckpt.pt`, dev bpb 2.2799).
+**Keep/revert:** **Revert.** Current best remains Run 7 (`ckpt.pt`, dev bpb 2.2799).
 
 ---
 
@@ -403,14 +405,23 @@ matched, -432 params).
 
 **Result: SUCCESS — largest win since the original LR discovery (Run 4).**
 
-**Conclusion:** At essentially identical parameter count, the gated SwiGLU MLP meaningfully
-outperforms the standard GELU MLP under this step budget — the multiplicative gating appears
-to give more useful representational capacity per parameter than a plain wider GELU projection,
-and this held up on the actual dev bpb metric, not just train loss. Promoting to final
-configuration.
+**Why it worked:** The standard MLP applies one fixed nonlinearity (GELU) to a single up-
+projection — every unit's activation is a function of its own pre-activation only. SwiGLU
+instead computes two parallel projections (`gate`, `up`) and multiplies them elementwise
+(`silu(gate(x)) * up(x)`) before the down-projection: `gate` acts as a learned, data-dependent,
+per-channel filter deciding how much of `up`'s signal passes through at each position, rather
+than every unit passing through the same fixed curve. That multiplicative interaction is a
+strictly richer function class per parameter than a single nonlinearity, which plausibly
+explains why it reaches a better representation in the same 2000 updates rather than needing
+more steps to catch up — and this held up on the actual dev bpb metric, not just train loss,
+so it's a real generalization improvement, not just a better in-distribution fit.
 
-**Keep/revert:** **Keep — new final configuration**
-(`ckpt_run9_swiglu_BEST.pt` / `ckpt.pt`, dev bpb 2.2262).
+**Conclusion:** At essentially identical parameter count, the gated SwiGLU MLP meaningfully
+outperforms the standard GELU MLP under this step budget. Promoting to current best.
+
+**Keep/revert:** **Keep — current best configuration**
+(`ckpt_run9_swiglu_BEST.pt` / `ckpt.pt`, dev bpb 2.2262). *(Later improved further by Run 10's
+BPE tokenizer.)*
 
 ---
 
@@ -466,11 +477,12 @@ model's usable context and the effective information content of each of the 2000
 steps increased - this compounds with every earlier win (LR, SwiGLU) rather than competing
 with them.
 
-**Conclusion:** Overall session result: dev bpb 2.3718 (baseline) → 2.1738 (final), an 8.35%
-relative improvement. Promoting to final submitted configuration.
+**Conclusion:** Session result at this point: dev bpb 2.3718 (baseline) → 2.1738, an 8.35%
+relative improvement. Promoting to current best configuration.
 
-**Keep/revert:** **Keep — final submitted configuration**
-(`ckpt_run10_BPE_swiglu_BEST.pt` / `ckpt.pt`, dev bpb 2.1738).
+**Keep/revert:** **Keep — current best configuration**
+(`ckpt_run10_BPE_swiglu_BEST.pt` / `ckpt.pt`, dev bpb 2.1738). *(Later superseded by Run 11's
+RMSNorm swap — see Session summary for the true final configuration.)*
 
 ---
 
@@ -510,10 +522,6 @@ scale/step budget - a fair, defensible outcome to report either way.
 
 ---
 
-## Session summary
-
----
-
 ## Run 12 — block_size 128→192, exploiting BPE's compression — **neutral, reverted**
 
 **Hypothesis:** BPE compresses ~2.5-2.6 bytes/token, so a fixed 128-token window already
@@ -541,10 +549,6 @@ training regime - not a general claim that longer context never helps, just that
 bottleneck here. Reverted to block_size=128 given no benefit for real added cost.
 
 **Keep/revert:** **Revert.** Final submission is Run 11 (`ckpt.pt`, dev bpb 2.1731).
-
----
-
-## Session summary
 
 ---
 

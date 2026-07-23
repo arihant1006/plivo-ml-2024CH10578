@@ -1,6 +1,7 @@
-"""Baseline trainer. It WORKS and it is MEDIOCRE ON PURPOSE. Your hour goes
-into changing what it does — schedule, init, optimizer, architecture,
-tokenizer — inside the hard caps.
+"""GPT trainer. Final config (see RUNLOG.md for the full derivation): plain Adam,
+cosine LR decay from --lr down to min_lr_ratio*--lr with no warmup (Run 7) - the
+peak (1e-3) and the decision to skip warmup were both established empirically
+(Runs 4-5) rather than assumed. Trains on train_corpus.txt only.
 
 HARD CAPS (checked at grading, violations = disqualified run):
   * max 2,000 optimizer steps in the run that produces your checkpoint
@@ -8,7 +9,7 @@ HARD CAPS (checked at grading, violations = disqualified run):
   * training text: the provided train_corpus.txt only
   * pure PyTorch / numpy / stdlib; no pretrained anything
 
-    python train.py --data ../data/train_corpus.txt --steps 2000 --out ckpt.pt
+    python train.py --data ../data/train_corpus.txt --steps 2000 --lr 1e-3 --out ckpt.pt
 """
 import argparse
 import math

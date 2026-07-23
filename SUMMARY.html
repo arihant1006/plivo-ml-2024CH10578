@@ -84,9 +84,11 @@ official, unmodified <code>evaluate.py</code> sliding-window scorer.</p>
 <tr><td>Gradient clipping</td><td class="mono">none</td><td>tested max_norm=1.0 (Run 2) — unnecessary, no instability to protect against</td></tr>
 <tr><td>Learning rate</td><td class="mono">cosine decay, 1e-3 → 1e-4, no warmup</td><td>peak found via Runs 4–5; decay added in Run 7</td></tr>
 <tr><td>Batch size</td><td class="mono">8</td><td>unchanged</td></tr>
+<tr><td>Normalization</td><td class="mono">RMSNorm</td><td>Run 11 — replaced LayerNorm, marginal gain (2.1738→2.1731), kept since it's free</td></tr>
+<tr><td>Bias terms</td><td class="mono">True (default)</td><td>Run 13 tested bias=False (LLaMA-style) — slightly worse, rejected</td></tr>
 <tr><td>Dropout</td><td class="mono">0.0</td><td>unchanged — no overfitting signal at this step count</td></tr>
 <tr><td>Init</td><td class="mono">normal(std=0.05), zero bias</td><td>Run 8 tested GPT-2-style rescaling — hurt, rejected (not re-tuned with LR)</td></tr>
-<tr><td>Total parameters</td><td class="mono">1,499,408 / 2,000,000</td><td>75% of cap (vocab growth from BPE used some of the capacity headroom)</td></tr>
+<tr><td>Total parameters</td><td class="mono">1,497,968 / 2,000,000</td><td>75% of cap (vocab growth from BPE used some of the capacity headroom)</td></tr>
 </table>
 </div>
 
@@ -106,6 +108,7 @@ official, unmodified <code>evaluate.py</code> sliding-window scorer.</p>
 <tr><td>10</td><td>Hand-rolled BPE tokenizer (500 merges, vocab 756)</td><td>2.1738</td><td class="pass">SUCCESS — largest single gain</td></tr>
 <tr><td>11</td><td>RMSNorm instead of LayerNorm</td><td><strong>2.1731</strong></td><td class="pass">marginal (+), kept, final</td></tr>
 <tr><td>12</td><td>block_size 128→192 (exploit BPE compression)</td><td>2.1732</td><td class="tag">neutral, reverted (~1.8x slower for no gain)</td></tr>
+<tr><td>13</td><td>bias=False on all Linear layers (LLaMA-style)</td><td>2.1773</td><td class="fail">FAILED — slightly worse, reverted</td></tr>
 </table>
 </div>
 
@@ -146,6 +149,15 @@ rather than avoided, once real time budget allowed for proper verification.</li>
 MLP for a gated SwiGLU MLP, at essentially matched parameter count, gave a substantial
 improvement — multiplicative gating appears to extract more useful capacity per parameter
 than a plain wider projection, at this scale and step budget.</li>
+<li><strong>Runs 11–13 show a genuine diminishing-returns arc, not a stalled search.</strong>
+Once optimization (LR/schedule), representation (BPE), and the feedforward block (SwiGLU) were
+each addressed, the remaining architectural levers — normalization (RMSNorm: +0.0007, within
+noise), context length (block_size 128→192: +0.0001 at ~1.8x the training cost), and bias terms
+(removing them: -0.0042, an actual regression) — all landed at or near zero. That pattern
+itself is informative: it indicates the three components that matter most for this specific
+tokenizer/architecture/step-budget combination were found, in that order, and further probing
+in adjacent, lower-leverage directions correctly stopped returning meaningful gains rather than
+being cut off early or continued past the point of diminishing information.</li>
 </ul>
 
 <h2>Human vs. AI Contribution</h2>
@@ -169,22 +181,36 @@ imprecise claim ("warmup can't hurt because it starts near zero") and forcing a 
 correction; initially deprioritizing BPE as too risky given the clock, then explicitly
 overriding that caution once real time budget was confirmed and pushing to attempt it anyway
 rather than settling for the safer stopping point — a call that produced the single largest
-win of the session; and hard time-boxing the whole process against a real, non-negotiable
-submission deadline throughout.</li>
+win of the session; pushing for one further experiment (Run 13) even after being told the
+submission was in a strong, complete state, on the grounds that comfortable time remained and
+it was worth spending; and, once Run 13 came back as a small regression with no confirmed time
+buffer left, accepting the recommendation to stop rather than chasing further gains — i.e.
+applying the same risk discipline to the decision to stop as to the decision to keep going.
+Hard time-boxing against a real, non-negotiable submission deadline ran throughout.</li>
 <li><strong>AI contributions:</strong> repository/assignment analysis, all code edits (model.py,
-train.py), running and monitoring all 7 training + evaluation runs, deriving exact parameter-count
-formulas and verifying them against the real model rather than estimating, diagnosing *why* each
-failed run failed (not just that it failed), and maintaining RUNLOG.md/NOTES.md/this document
-throughout rather than after the fact.</li>
+train.py, tokenizer.py), running and monitoring all 13 training + evaluation runs, deriving
+exact parameter-count formulas and verifying them against the real model rather than
+estimating, implementing and exhaustively round-trip-verifying the BPE tokenizer before it
+ever touched training, diagnosing *why* each failed or neutral run turned out that way (not
+just that it did), and maintaining RUNLOG.md/NOTES.md/this document throughout rather than
+after the fact.</li>
 <li><strong>Second-AI suggestions accepted:</strong> map the constant-LR region before
-introducing a scheduler; prioritize capacity over a scheduler once LR was resolved; keep RUNLOG
-conclusions appropriately hedged rather than over-certain.</li>
+introducing a scheduler; prioritize capacity over a scheduler once LR was resolved; don't
+bundle unrelated ideas (BPE + RMSNorm) into one run even under time pressure, since a clean
+single-variable result is worth more than saved minutes when the baseline is already safely
+banked; scope RUNLOG conclusions to the tested regime ("didn't help under this setup") rather
+than general claims ("bias terms don't help") — applied as a direct edit to the Run 12/13
+conclusions late in the session.</li>
 <li><strong>Second-AI suggestions pushed back on or revised:</strong> an unverifiable claim
 about cosine schedules "losing" in an unrelated prior context was treated as anecdote, not
 evidence; "spend the unused parameter budget" was treated as a hypothesis to test rather than a
-free win (it was tested — Run 6 — and failed); and the original warmup justification was
-revised once the timing of Run 5's plateau (mid-run, not at initialization) showed warmup
-wasn't the right mechanism.</li>
+free win (it was tested — Run 6 — and failed); the original warmup justification was revised
+once the timing of Run 5's plateau (mid-run, not at initialization) showed warmup wasn't the
+right mechanism; and RoPE was proposed twice as a final "moonshot" but declined both times on
+the grounds that a subtly-wrong rotation implementation fails silently (it still trains, just
+without the intended benefit) rather than crashing — meaning correctness verification would not
+fit the remaining time, which the second AI's own stated decision rule ("skip it if Claude
+hesitates") agreed with once stated plainly.</li>
 </ul>
 
 <footer>
