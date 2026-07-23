@@ -58,9 +58,9 @@
 
 <div class="metric-row">
   <div class="metric-card"><div class="label">Baseline dev bpb</div><div class="value">2.3718</div></div>
-  <div class="metric-card"><div class="label">Final dev bpb</div><div class="value good">2.2799</div></div>
-  <div class="metric-card"><div class="label">Relative improvement</div><div class="value good">3.9%</div></div>
-  <div class="metric-card"><div class="label">Parameters used</div><div class="value">1,339,840 <span class="tag">/ 2,000,000 cap</span></div></div>
+  <div class="metric-card"><div class="label">Final dev bpb</div><div class="value good">2.1738</div></div>
+  <div class="metric-card"><div class="label">Relative improvement</div><div class="value good">8.35%</div></div>
+  <div class="metric-card"><div class="label">Parameters used</div><div class="value">1,499,408 <span class="tag">/ 2,000,000 cap</span></div></div>
 </div>
 
 <h2>Objective</h2>
@@ -74,18 +74,19 @@ official, unmodified <code>evaluate.py</code> sliding-window scorer.</p>
 <div class="table-wrap">
 <table>
 <tr><th>Component</th><th>Value</th><th>Note</th></tr>
-<tr><td>Tokenizer</td><td class="mono">byte-level, vocab=256</td><td>unchanged from starter — see "Not attempted" below</td></tr>
-<tr><td>Architecture</td><td class="mono">4-layer, 4-head, GPT (pre-norm, causal SDPA attention)</td><td>unchanged from starter</td></tr>
+<tr><td>Tokenizer</td><td class="mono">hand-rolled BPE, vocab=756 (500 merges)</td><td>Run 10 — pure Python/NumPy, byte-fallback, round-trip verified</td></tr>
+<tr><td>Architecture</td><td class="mono">4-layer, 4-head, GPT (pre-norm, causal SDPA attention)</td><td>attention unchanged from starter</td></tr>
+<tr><td>MLP</td><td class="mono">SwiGLU (gated silu), hidden=426</td><td>Run 9 — replaced standard 4x GELU MLP, matched param count</td></tr>
 <tr><td>n_embd</td><td class="mono">160</td><td>tested 196 (Run 6) — did not help under fixed step budget</td></tr>
-<tr><td>block_size</td><td class="mono">128</td><td>unchanged</td></tr>
+<tr><td>block_size</td><td class="mono">128</td><td>unchanged (now covers ~2.6x more raw text via BPE)</td></tr>
 <tr><td>Weight tying</td><td class="mono">False</td><td>tested True (Runs 2–3) — <strong>hurt</strong> results, rejected</td></tr>
 <tr><td>Optimizer</td><td class="mono">Adam (plain, no weight decay)</td><td>AdamW+decay tested (Run 2) — hurt, rejected</td></tr>
 <tr><td>Gradient clipping</td><td class="mono">none</td><td>tested max_norm=1.0 (Run 2) — unnecessary, no instability to protect against</td></tr>
 <tr><td>Learning rate</td><td class="mono">cosine decay, 1e-3 → 1e-4, no warmup</td><td>peak found via Runs 4–5; decay added in Run 7</td></tr>
 <tr><td>Batch size</td><td class="mono">8</td><td>unchanged</td></tr>
 <tr><td>Dropout</td><td class="mono">0.0</td><td>unchanged — no overfitting signal at this step count</td></tr>
-<tr><td>Init</td><td class="mono">normal(std=0.05), zero bias</td><td>unchanged (candidate for future work)</td></tr>
-<tr><td>Total parameters</td><td class="mono">1,339,840 / 2,000,000</td><td>67% of cap — capacity increase tested and rejected (Run 6)</td></tr>
+<tr><td>Init</td><td class="mono">normal(std=0.05), zero bias</td><td>Run 8 tested GPT-2-style rescaling — hurt, rejected (not re-tuned with LR)</td></tr>
+<tr><td>Total parameters</td><td class="mono">1,499,408 / 2,000,000</td><td>75% of cap (vocab growth from BPE used some of the capacity headroom)</td></tr>
 </table>
 </div>
 
@@ -101,6 +102,8 @@ official, unmodified <code>evaluate.py</code> sliding-window scorer.</p>
 <tr><td>6</td><td>Widen model 160→196 (1.98M params) at lr=1e-3</td><td>2.2965</td><td class="fail">FAILED — no gain from capacity</td></tr>
 <tr><td>7</td><td>Cosine decay 1e-3→1e-4, no warmup</td><td><strong>2.2799</strong></td><td class="pass">SUCCESS — final</td></tr>
 <tr><td>8</td><td>GPT-2 style init (std=0.02 + residual scaling)</td><td>2.3302</td><td class="fail">FAILED — likely init/LR coupling, not re-tuned</td></tr>
+<tr><td>9</td><td>SwiGLU MLP instead of GELU MLP (matched params)</td><td>2.2262</td><td class="pass">SUCCESS — 2nd largest gain</td></tr>
+<tr><td>10</td><td>Hand-rolled BPE tokenizer (500 merges, vocab 756)</td><td><strong>2.1738</strong></td><td class="pass">SUCCESS — largest single gain, final</td></tr>
 </table>
 </div>
 
@@ -128,12 +131,19 @@ our already-tuned LR schedule it made results worse — most likely because init
 learning rate jointly determine effective step size, and the LR schedule had been tuned
 specifically for the original std=0.05 init. This was correctly rejected as "this init doesn't
 work with this LR," not "this init is bad," given no time remained for a joint re-tune.</li>
-<li><strong>Not attempted: a BPE tokenizer.</strong> The byte-level tokenizer triples the
-token cost of Devanagari text (each Devanagari character is 3 UTF-8 bytes), affecting ~14% of
-train and ~21% of the held-out eval text — likely the single highest-ceiling remaining lever.
-It was deliberately not attempted given the hard, disqualifying round-trip-correctness
-requirement (`decode(encode(text)) == text`) under real time pressure near the submission
-deadline — a risk/reward call made explicitly, not an oversight.</li>
+<li><strong>The BPE tokenizer (Run 10) was the single largest win of the session.</strong> The
+byte-level tokenizer tripled the token cost of Devanagari text (each Devanagari character is 3
+UTF-8 bytes), affecting ~14% of train and ~21% of the held-out eval text. A from-scratch BPE
+tokenizer (pure Python/NumPy/stdlib, 500 merges, vocab 256→756) compressed this to 2.6-3.7
+bytes/token, giving the model roughly 2.5x more real text per fixed 128-token context window.
+Given the hard, disqualifying round-trip-correctness requirement, this was verified explicitly
+on the full training corpus, the full dev_eval.txt, and out-of-distribution text (emoji, other
+scripts) before any model training began — the highest-ceiling lever, attempted deliberately
+rather than avoided, once real time budget allowed for proper verification.</li>
+<li><strong>SwiGLU (Run 9) was the second-largest win.</strong> Swapping the standard 4x-GELU
+MLP for a gated SwiGLU MLP, at essentially matched parameter count, gave a substantial
+improvement — multiplicative gating appears to extract more useful capacity per parameter
+than a plain wider projection, at this scale and step budget.</li>
 </ul>
 
 <h2>Human vs. AI Contribution</h2>
@@ -154,8 +164,11 @@ accepted, several were pushed back on with specific technical counter-arguments.
 isolation instead of trusting a first bundled "hygiene" run at face value; explicitly rejecting
 premature jumps to a scheduler before the LR region was empirically mapped; catching an
 imprecise claim ("warmup can't hurt because it starts near zero") and forcing a mechanism-level
-correction; setting the BPE go/no-go decision explicitly rather than letting it default; and
-hard time-boxing the whole process against a real, non-negotiable submission deadline.</li>
+correction; initially deprioritizing BPE as too risky given the clock, then explicitly
+overriding that caution once real time budget was confirmed and pushing to attempt it anyway
+rather than settling for the safer stopping point — a call that produced the single largest
+win of the session; and hard time-boxing the whole process against a real, non-negotiable
+submission deadline throughout.</li>
 <li><strong>AI contributions:</strong> repository/assignment analysis, all code edits (model.py,
 train.py), running and monitoring all 7 training + evaluation runs, deriving exact parameter-count
 formulas and verifying them against the real model rather than estimating, diagnosing *why* each

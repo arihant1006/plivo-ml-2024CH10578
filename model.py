@@ -38,15 +38,29 @@ class SelfAttention(nn.Module):
         return self.drop(self.proj(y))
 
 
+class SwiGLU(nn.Module):
+    # Run 9: gated MLP (SwiGLU/silu-gated), hidden dim scaled by 2/3 vs the
+    # standard 4x GELU MLP so the extra (three vs two) weight matrices land
+    # at roughly the same parameter count.
+    def __init__(self, cfg):
+        super().__init__()
+        hidden = int(cfg.n_embd * 8 / 3)
+        self.gate = nn.Linear(cfg.n_embd, hidden)
+        self.up = nn.Linear(cfg.n_embd, hidden)
+        self.down = nn.Linear(hidden, cfg.n_embd)
+        self.drop = nn.Dropout(cfg.dropout)
+
+    def forward(self, x):
+        return self.drop(self.down(F.silu(self.gate(x)) * self.up(x)))
+
+
 class Block(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.ln1 = nn.LayerNorm(cfg.n_embd)
         self.attn = SelfAttention(cfg)
         self.ln2 = nn.LayerNorm(cfg.n_embd)
-        self.mlp = nn.Sequential(
-            nn.Linear(cfg.n_embd, 4 * cfg.n_embd), nn.GELU(),
-            nn.Linear(4 * cfg.n_embd, cfg.n_embd), nn.Dropout(cfg.dropout))
+        self.mlp = SwiGLU(cfg)
 
     def forward(self, x):
         x = x + self.attn(self.ln1(x))
