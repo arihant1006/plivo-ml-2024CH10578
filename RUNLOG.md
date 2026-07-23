@@ -534,11 +534,11 @@ larger position-embedding table).
 
 **Result: neutral (+0.0001, pure noise) at ~1.8x the training cost.**
 
-**Conclusion:** 128 tokens (~330 real bytes of text via BPE) was already sufficient context at
-this model scale (4 layers, 160-dim) and step budget - extending it further neither helped nor
-hurt the metric, only the wall-clock. Reverted to block_size=128 given no benefit for real
-added cost. A clean, well-motivated negative result: the bottleneck at this point in the
-session was not context length.
+**Conclusion:** Increasing the context window from 128 to 192 tokens did not improve dev bpb
+under the fixed 2000-step budget, despite nearly doubling training time (179s → 330s). This
+suggests that, after BPE, context length was no longer the limiting factor in this specific
+training regime - not a general claim that longer context never helps, just that it wasn't the
+bottleneck here. Reverted to block_size=128 given no benefit for real added cost.
 
 **Keep/revert:** **Revert.** Final submission is Run 11 (`ckpt.pt`, dev bpb 2.1731).
 
@@ -560,9 +560,10 @@ since correct implementation and verification would not fit in the remaining tim
 
 **Results:** Dev bpb 2.1731 (Run 11) → 2.1773 (Run 13) - a small regression (+0.0042).
 
-**Conclusion:** At this scale/step budget, bias terms contribute a small but real amount of
-useful capacity that removing them doesn't recoup elsewhere - the "modern practice" benefit of
-bias removal is more relevant at much larger scale than here. Reverted to `bias=True`
+**Conclusion:** Under this model scale and fixed 2000-step budget, removing bias terms
+resulted in a small regression (2.1731 → 2.1773). This suggests bias removal did not provide a
+benefit in this specific setting, even though many larger modern LLMs omit them - the result
+is scoped to this regime, not a general claim about bias terms. Reverted to `bias=True`
 (defaults). Correctly predicted as low-expected-upside before running; treated as a clean,
 honest negative result rather than a surprise.
 
