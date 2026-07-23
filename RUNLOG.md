@@ -546,9 +546,38 @@ session was not context length.
 
 ## Session summary
 
-Baseline dev bpb 2.3718 → final dev bpb **2.1731** (8.4% relative improvement) across 12 runs.
+---
+
+## Run 13 — bias=False on all Linear layers (LLaMA-style) — **slightly worse, reverted**
+
+**Hypothesis:** Modern LLMs (LLaMA, PaLM) commonly drop bias terms from attention/MLP Linear
+layers. Chosen as the last experiment specifically because it satisfies strict late-session
+criteria: <5 min to implement, cannot introduce a subtle math bug (still plain Linear layers),
+trivially revertible - unlike RoPE, which was explicitly considered and rejected for this slot
+since correct implementation and verification would not fit in the remaining time safely.
+
+**What changed:** `bias=False` on `qkv`, `proj` (attention) and `gate`, `up`, `down` (SwiGLU).
+
+**Results:** Dev bpb 2.1731 (Run 11) → 2.1773 (Run 13) - a small regression (+0.0042).
+
+**Conclusion:** At this scale/step budget, bias terms contribute a small but real amount of
+useful capacity that removing them doesn't recoup elsewhere - the "modern practice" benefit of
+bias removal is more relevant at much larger scale than here. Reverted to `bias=True`
+(defaults). Correctly predicted as low-expected-upside before running; treated as a clean,
+honest negative result rather than a surprise.
+
+**Keep/revert:** **Revert.** Final submission remains Run 11 (`ckpt.pt`, dev bpb 2.1731).
+
+---
+
+## Session summary
+
+Baseline dev bpb 2.3718 → final dev bpb **2.1731** (8.4% relative improvement) across 13 runs.
 Ranked by actual impact: (1) BPE tokenizer, (2) SwiGLU MLP, (3) LR tuning + cosine decay,
-(4) RMSNorm (marginal), (5) block_size increase (neutral). Weight tying, capacity increase,
-GPT-2-style init, and longer context were each well-motivated, tested, and rejected/neutral
-under this specific 2000-step/CPU/parameter-capped regime - the model was consistently
-optimization- and representation-limited, not capacity- or context-limited, throughout.
+(4) RMSNorm (marginal). block_size increase and bias removal were both neutral-to-slightly-
+negative, well-motivated late-session probes that correctly identified diminishing returns.
+Weight tying, capacity increase, and GPT-2-style init were each well-motivated, tested, and
+rejected under this specific 2000-step/CPU/parameter-capped regime - the model was
+consistently optimization- and representation-limited, not capacity- or context-limited,
+throughout. RoPE was considered for the final slot and deliberately not attempted given
+insufficient time to implement and verify the rotation math safely under the deadline.

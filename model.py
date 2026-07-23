@@ -25,6 +25,8 @@ class SelfAttention(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.n_head = cfg.n_head
+        # Run 13 tested bias=False (LLaMA-style) - slightly worse (2.1773 vs
+        # 2.1731); reverted to default bias=True.
         self.qkv = nn.Linear(cfg.n_embd, 3 * cfg.n_embd)
         self.proj = nn.Linear(cfg.n_embd, cfg.n_embd)
         self.drop = nn.Dropout(cfg.dropout)
